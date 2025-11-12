@@ -1,0 +1,303 @@
+# Create an interactive HTML page that computes answers from the winemag CSV and saves it for the user.
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Winemag Dataset 小網站｜國家數量 & 前10名多品種國家</title>
+  <meta name="description" content="上傳 winemag CSV（例如 winemag-data-130k-v2.csv），自動計算：1) 有多少個國家？2) 依據 descriptions 或 variety 欄位，找出生產最多種類的前10名國家。" />
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #111827;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --accent: #60a5fa;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --accent: #2563eb;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--bg); color: var(--text);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap { max-width: 1000px; margin: 0 auto; }
+    header { margin-bottom: 20px; }
+    h1 { font-size: clamp(20px, 3vw, 34px); margin: 0 0 6px 0; }
+    p.lead { color: var(--muted); margin: 0 0 14px 0; }
+    .card {
+      background: var(--card); border: 1px solid rgba(148,163,184,.25);
+      border-radius: 16px; padding: 18px; margin: 14px 0 22px 0;
+      box-shadow: 0 10px 24px rgba(0,0,0,.08);
+    }
+    label { font-weight: 600; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 820px){ .row { grid-template-columns: 2fr 1fr; } }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    input[type="file"] {
+      padding: 10px; border-radius: 12px; border: 1px dashed rgba(148,163,184,.5);
+      background: rgba(148,163,184,.06); color: var(--text);
+      max-width: 100%;
+    }
+    select, button {
+      padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(148,163,184,.45);
+      background: rgba(148,163,184,.08); color: var(--text); cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent); color: #fff; border-color: transparent; font-weight: 700;
+    }
+    .kpi-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0,1fr)); }
+    @media (min-width: 680px){ .kpi-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+    .kpi { background: rgba(148,163,184,.08); border: 1px solid rgba(148,163,184,.25); padding: 14px; border-radius: 14px; }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .value { font-size: 28px; font-weight: 800; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid rgba(148,163,184,.25); text-align: left; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    tbody tr:hover { background: rgba(148,163,184,.08); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid rgba(148,163,184,.35); color: var(--muted); }
+    .note { color: var(--muted); font-size: 14px; }
+    .ok { color: var(--ok); } .warn{color:var(--warn);} .err{color:var(--err);}
+    footer { margin-top: 26px; color: var(--muted); font-size: 14px; }
+    code { background: rgba(148,163,184,.15); padding: 2px 6px; border-radius: 6px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Winemag Dataset 分析小網站</h1>
+      <p class="lead">請上傳 <strong>winemag CSV</strong>（例如 <code>winemag-data-130k-v2.csv</code>）。本頁將計算並展示：
+        <br>1) <b>資料集中有多少個國家？</b>（依 <code>country</code> 欄位）
+        <br>2) <b>生產最多種類的前 10 名國家</b>（可選擇依 <code>descriptions</code> 或 <code>variety</code> 欄位計算）。
+      </p>
+    </header>
+
+    <section class="card">
+      <div class="controls">
+        <label for="csv">上傳 CSV：</label>
+        <input id="csv" type="file" accept=".csv,text/csv" />
+        <label for="mode">計算依據：</label>
+        <select id="mode" title="選擇依 descriptions 關鍵字或 variety 欄位">
+          <option value="description" selected>descriptions 關鍵字</option>
+          <option value="variety">variety 欄位</option>
+        </select>
+        <button id="analyze" class="primary">開始分析</button>
+        <span id="status" class="note"></span>
+      </div>
+      <p class="note" style="margin-top:10px">小提醒：CSV 欄位名稱需包含 <code>country</code>、<code>description</code>（若選 descriptions 模式）或 <code>variety</code>（若選 variety 模式）。</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">結果概覽</h2>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">唯一國家數</div><div id="kpi-countries" class="value">—</div></div>
+        <div class="kpi"><div class="label">總筆數（成功解析）</div><div id="kpi-rows" class="value">—</div></div>
+        <div class="kpi"><div class="label">計算依據</div><div id="kpi-mode" class="value">—</div></div>
+        <div class="kpi"><div class="label">處理時間（秒）</div><div id="kpi-time" class="value">—</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <div>
+          <h3 style="margin-top:0">1) winemag dataset 中有多少個國家？</h3>
+          <p>依據 <code>country</code> 欄位的唯一值計算（忽略空白與缺漏）。</p>
+          <div id="countryCount" class="badge">尚未計算</div>
+        </div>
+        <div>
+          <h3 style="margin-top:0">2) 生產最多種類的前 10 名國家</h3>
+          <p>採 <span id="explain-mode" class="badge">descriptions 關鍵字</span> 聚合每國「不同品種」數量後排序。</p>
+        </div>
+      </div>
+      <div style="overflow:auto">
+        <table id="topTable">
+          <thead>
+            <tr><th>#</th><th>國家</th><th>不同品種數</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <p>說明：<br>
+      • <b>descriptions 模式</b>：會在每列的 <code>description</code> 文字中搜尋常見的葡萄品種關鍵字（含常見同義字），將命中結果視為該列的品種。<br>
+      • <b>variety 模式</b>：直接使用 <code>variety</code> 欄位的內容（較準確）。<br>
+      • 若網路可用，本頁會載入 <code>PapaParse</code> 與 <code>Chart.js</code>（僅表格也能正常運作）。資料僅在瀏覽器本機記憶體處理，不會上傳。</p>
+    </footer>
+  </div>
+
+  <!-- Libraries via CDN (optional; page still works without Chart.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+
+  <script>
+  ;(() => {
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    const statusEl = $("#status");
+    const kpiCountries = $("#kpi-countries");
+    const kpiRows = $("#kpi-rows");
+    const kpiMode = $("#kpi-mode");
+    const kpiTime = $("#kpi-time");
+    const countryBadge = $("#countryCount");
+    const explainMode = $("#explain-mode");
+    const topTableBody = $("#topTable tbody");
+
+    // Canonical grape list with synonyms -> canonical mapping
+    // Note: this is a compact set covering多數常見品種；可自行擴充。
+    const VAR_MAP = (() => {
+      const canon = [
+        "Cabernet Sauvignon","Merlot","Pinot Noir","Chardonnay","Sauvignon Blanc","Syrah",
+        "Shiraz","Riesling","Zinfandel","Sangiovese","Nebbiolo","Tempranillo","Malbec",
+        "Grenache","Garnacha","Barbera","Viognier","Chenin Blanc","Gamay","Pinot Grigio",
+        "Pinot Gris","Moscato","Muscat","Gewurztraminer","Carignan","Mourvedre","Monastrell",
+        "Pinot Blanc","Albarino","Albariño","Torrontes","Torrontés","Gruner Veltliner","Grüner Veltliner",
+        "Petite Sirah","Tannat","Dolcetto","Carmenere","Carménère","Aglianico","Verdicchio","Fiano",
+        "Vermentino","Glera","Prosecco","Cabernet Franc","Petit Verdot","Touriga Nacional",
+        "Corvina","Molinara","Rondinella","Trebbiano","Garganega","Nero d'Avola","Primitivo",
+        "Montepulciano","Assyrtiko","Xinomavro","Viura","Macabeo","Semillon","Sémillon",
+        "Clairette","Cinsault","Colombard","Lambrusco","Mencia","Mencía","Negroamaro",
+        "Nerello Mascalese","Nerello Cappuccio","Pinot Meunier","Rkatsiteli","Saperavi","Touriga Franca",
+        "Trincadeira","Arinto","Godello","Verdejo","Listan Negro","Listán Negro","Listan Blanco",
+        "Listán Blanco","Silvaner","Scheurebe","Kerner","Baga","Bonarda","Pais","País",
+        "Schiava","Trollinger","Teroldego","Lagrein","Marsanne","Roussanne","Savagnin","Trousseau",
+        "Bobal","Cortese","Gros Manseng","Petit Manseng","Loupiac" // extra few
+      ];
+      const map = new Map();
+      const alias = {
+        "Shiraz":"Syrah", "Garnacha":"Grenache",
+        "Pinot Grigio":"Pinot Gris", "Muscat":"Moscato",
+        "Gewürztraminer":"Gewurztraminer", "Monastrell":"Mourvedre",
+        "Albariño":"Albarino", "Torrontés":"Torrontes",
+        "Grüner Veltliner":"Gruner Veltliner", "Carménère":"Carmenere",
+        "Sémillon":"Semillon", "Mencía":"Mencia", "País":"Pais",
+        "Listán Negro":"Listan Negro", "Listán Blanco":"Listan Blanco"
+      };
+      for (const v of canon) {
+        const key = (alias[v] || v);
+        map.set(v.toLowerCase(), alias[v] ? alias[v] : v);
+        map.set(key.toLowerCase(), alias[v] ? alias[v] : v);
+      }
+      for (const [k,v] of Object.entries(alias)) map.set(k.toLowerCase(), v);
+      return map;
+    })();
+
+    function extractVarietiesFromDesc(desc='') {
+      const found = new Set();
+      const text = String(desc).toLowerCase();
+      for (const [needleLower, canonical] of VAR_MAP.entries()) {
+        // word boundary-ish match; allow accented already normalized in keys
+        const n = needleLower.toLowerCase();
+        const pattern = new RegExp(`\\b${n.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i");
+        if (pattern.test(text)) found.add(canonical);
+      }
+      return found;
+    }
+
+    function parseCSV(file, onRow, onComplete) {
+      if (window.Papa) {
+        Papa.parse(file, {
+          header: true, skipEmptyLines: true, worker: true,
+          chunk: (results) => {
+            for (const row of results.data) onRow(row);
+          },
+          complete: () => onComplete(),
+          error: (err) => { throw err; }
+        });
+      } else {
+        // Fallback: very naive CSV (will not handle quoted commas); warn the user.
+        statusEl.innerHTML = "⚠️ 無法載入 PapaParse，改用簡易解析，結果可能不準。";
+        const reader = new FileReader();
+        reader.onload = () => {
+          const [headerLine, ...lines] = reader.result.split(/\r?\n/).filter(Boolean);
+          const headers = headerLine.split(",");
+          for (const line of lines) {
+            const cells = line.split(",");
+            const row = {};
+            headers.forEach((h, i) => row[h] = cells[i]);
+            onRow(row);
+          }
+          onComplete();
+        };
+        reader.readAsText(file);
+      }
+    }
+
+    function formatNumber(n){ return n.toLocaleString(); }
+
+    $("#analyze").addEventListener("click", () => {
+      const file = $("#csv").files[0];
+      const mode = $("#mode").value;
+      if (!file) { statusEl.textContent = "請先選擇 CSV 檔。"; return; }
+      const t0 = performance.now();
+      statusEl.textContent = "解析中…（請稍候）";
+      kpiMode.textContent = mode === "description" ? "descriptions" : "variety";
+
+      const uniqueCountries = new Set();
+      const byCountry = new Map(); // country -> Set(varieties)
+      let okRows = 0;
+
+      parseCSV(file, (row) => {
+        const country = String(row.country || "").trim();
+        if (!country) return;
+        uniqueCountries.add(country);
+
+        let varieties = new Set();
+        if (mode === "variety") {
+          const v = String(row.variety || "").trim();
+          if (v) varieties.add(v);
+        } else {
+          varieties = extractVarietiesFromDesc(row.description || "");
+        }
+        if (varieties.size === 0) return;
+
+        if (!byCountry.has(country)) byCountry.set(country, new Set());
+        const bucket = byCountry.get(country);
+        for (const v of varieties) bucket.add(v);
+        okRows++;
+      }, () => {
+        const t1 = performance.now();
+        const ms = (t1 - t0) / 1000;
+
+        const rankings = Array.from(byCountry.entries())
+          .map(([country, set]) => ({ country, varieties: set, count: set.size }))
+          .sort((a,b) => b.count - a.count || a.country.localeCompare(b.country));
+
+        // KPIs
+        kpiCountries.textContent = formatNumber(uniqueCountries.size);
+        kpiRows.textContent = formatNumber(okRows);
+        kpiTime.textContent = ms.toFixed(2);
+        countryBadge.textContent = `${formatNumber(uniqueCountries.size)} 個國家`;
+        explainMode.textContent = mode === "description" ? "descriptions 關鍵字" : "variety 欄位";
+
+        // Table
+        topTableBody.innerHTML = "";
+        rankings.slice(0,10).forEach((r, idx) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${idx+1}</td><td>${r.country}</td><td><b>${formatNumber(r.count)}</b></td>`;
+          topTableBody.appendChild(tr);
+        });
+
+        statusEl.innerHTML = `<span class="ok">完成！</span> 共有 <b>${formatNumber(uniqueCountries.size)}</b> 個國家，已依「${mode}」整理前 10 名。`;
+      });
+    });
+  })();
+  </script>
+</body>
+</html>
+
